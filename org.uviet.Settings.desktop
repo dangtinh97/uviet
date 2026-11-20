@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Cài đặt UViet
+Name[en]=UViet Settings
+Name[vi]=Cài đặt UViet
+Comment=Chọn ứng dụng được gõ tiếng Việt
+Exec=/usr/lib/uviet/settings.py
+Icon=preferences-desktop-keyboard
+Terminal=false
+Type=Application
+Categories=Settings;
+Keywords=UViet;Telex;Vietnamese;Keyboard;Input method;
+StartupNotify=true

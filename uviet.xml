@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component>
+    <name>org.freedesktop.IBus.UViet</name>
+    <description>UViet Vietnamese input engine</description>
+    <exec>/usr/bin/python3 /usr/lib/uviet/engine.py</exec>
+    <version>0.6.4</version>
+    <engines>
+        <engine>
+            <name>uviet</name>
+            <longname>UViet (Telex)</longname>
+            <description>Vietnamese Telex input without an underline request</description>
+            <language>vi</language>
+            <layout>default</layout>
+            <symbol>vi</symbol>
+            <setup>/usr/lib/uviet/settings.py</setup>
+        </engine>
+        <engine>
+            <name>uviet-panel</name>
+            <longname>UViet (Telex, không gạch chân)</longname>
+            <description>Vietnamese Telex with preview in the IBus panel</description>
+            <language>vi</language>
+            <layout>default</layout>
+            <symbol>vi</symbol>
+        </engine>
+    </engines>
+</component>

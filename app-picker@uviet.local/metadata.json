@@ -1,0 +1,7 @@
+{
+  "uuid": "app-picker@uviet.local",
+  "name": "UViet Application Picker",
+  "description": "Identifies the application beneath the UViet picker on Wayland.",
+  "shell-version": ["50"],
+  "version": 2
+}

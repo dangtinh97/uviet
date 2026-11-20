@@ -1,0 +1,7 @@
+{
+  "uuid": "chrome-omnibox@uviet.local",
+  "name": "Bamboo for Chrome Omnibox",
+  "description": "Lets Chrome handle address-bar autocomplete keys directly while Bamboo is selected.",
+  "shell-version": ["50"],
+  "version": 1
+}
