@@ -3,7 +3,7 @@
 UViet là bộ gõ tiếng Việt Telex cho Ubuntu dùng IBus.
 
 - **UViet (Telex, không gạch chân)** hiện từ đang gõ ở bảng IBus. Ô nhập chỉ nhận văn bản Unicode NFC khi chốt từ. UViet gửi nguyên từ cùng dấu cách hoặc dấu câu ASCII trong một lần, không cần xóa hoặc gõ lại chữ trong ô nhập.
-- **UViet (Telex)** gõ trực tiếp trong ô nhập thường có hỗ trợ đọc và sửa chữ quanh con trỏ. Với các ô khác, UViet gửi chữ đang soạn cùng thuộc tính `Underline.NONE`. Ứng dụng hoặc compositor có thể áp dụng định dạng riêng.
+- **UViet (Telex)** mặc định soạn chữ bằng preedit để tương thích. Ứng dụng hoặc compositor có thể gạch chân từ đang soạn. Có thể chọn **Gõ trực tiếp** riêng cho ứng dụng hỗ trợ sửa chữ quanh con trỏ.
 
 ## Cài đặt trên Ubuntu GNOME
 
@@ -11,7 +11,7 @@ Từ thư mục dự án, tạo và cài gói Debian:
 
 ```sh
 make deb
-sudo apt install ./dist/uviet_0.6.4_all.deb
+sudo apt install ./dist/uviet_0.6.8_all.deb
 ```
 
 Sau khi cài, đăng xuất khỏi Ubuntu rồi đăng nhập lại để IBus và GNOME nạp UViet. Nếu chỉ cập nhật bộ gõ trong phiên GNOME đang chạy, có thể khởi động lại dịch vụ IBus như bên dưới.
@@ -51,11 +51,11 @@ sudo make uninstall
 systemctl --user restart org.freedesktop.IBus.session.GNOME.service
 ```
 
-## Tắt Telex theo ứng dụng
+## Chọn chế độ gõ theo ứng dụng
 
 Trên GNOME Shell 50, sau khi cài lần đầu hãy đăng xuất rồi đăng nhập lại và bật bộ chọn cửa sổ bằng `gnome-extensions enable app-picker@uviet.local`.
 
-Tìm **UViet** trong menu ứng dụng hoặc chọn **Mở Cài đặt UViet…** trong menu bộ gõ trên thanh trên cùng. Kéo nút hình ống nhỏ giọt lên cửa sổ cần loại trừ rồi thả, hoặc bấm nút rồi chọn cửa sổ. Lặp lại cho từng ứng dụng. Để xóa một mục, bấm **Bật lại Telex** bên cạnh tên ứng dụng. UViet đọc thay đổi ngay mà không cần khởi động lại IBus.
+Tìm **UViet** trong menu ứng dụng hoặc chọn **Mở Cài đặt UViet…** trong menu bộ gõ trên thanh trên cùng. Mở tab **Gõ trực tiếp** hoặc **Tắt Telex**, rồi kéo nút hình ống nhỏ giọt lên cửa sổ hoặc bấm nút và bấm cửa sổ. Mỗi ứng dụng chỉ thuộc một danh sách. Bấm **Bỏ khỏi danh sách** để dùng lại preedit mặc định. UViet đọc thay đổi ngay mà không cần khởi động lại IBus.
 
 UViet nhận diện theo lớp cửa sổ GNOME và lưu lựa chọn trong `~/.config/uviet/excluded-apps.json` theo mặc định. Quy tắc áp dụng cho các cửa sổ có cùng lớp. Nếu GNOME chưa cung cấp lớp cửa sổ, mục này sẽ bị vô hiệu hóa.
 
@@ -79,3 +79,5 @@ GNOME Terminal dùng tiến trình dịch vụ riêng. Đặt `Environment=GTK_I
 ## Phiên bản
 
 Tăng giá trị `<version>` trong `uviet.xml` khi phát hành thay đổi. Makefile dùng cùng giá trị cho tên gói Debian và cửa sổ **Cài đặt UViet**.
+
+Trên máy Ubuntu Wayland có ChatGPT Desktop với lối mở chuẩn của gói Ubuntu, nút **Dùng Wayland cho ChatGPT** trong **Cài đặt UViet** cập nhật lối mở ChatGPT cho tài khoản hiện tại. Thoát hẳn ChatGPT rồi mở lại từ mục **ChatGPT** trong menu ứng dụng.

@@ -3,6 +3,7 @@
 
 import gi
 import json
+import re
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -11,9 +12,29 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from applications import FOCUS_INTERFACE, FOCUS_PATH, PICKER_INTERFACE, PICKER_PATH, SHELL_NAME
-from exclusions import load_excluded, set_application_excluded
+from exclusions import (
+    MODE_DIRECT, MODE_LABELS, MODE_OFF, MODE_PREEDIT, load_application_modes, set_application_mode,
+)
 
 SETTINGS_WINDOW_CLASSES = {"uviet-settings", "org.uviet.settings"}
+CHATGPT_DESKTOP_ID = "chatgpt.desktop"
+CHATGPT_SYSTEM_ENTRY = Path("/usr/share/applications") / CHATGPT_DESKTOP_ID
+CHATGPT_WAYLAND_EXEC = (
+    "Exec=/usr/bin/chatgpt --ozone-platform=wayland "
+    "--enable-wayland-ime --wayland-text-input-version=3 %U"
+)
+
+
+def configure_chatgpt_wayland(source, destination):
+    entry = source.read_text(encoding="utf-8")
+    if CHATGPT_WAYLAND_EXEC in entry.splitlines():
+        return
+    entry, changed = re.subn(r"^Exec=(?:/usr/bin/)?chatgpt %U$", CHATGPT_WAYLAND_EXEC,
+                             entry, count=1, flags=re.MULTILINE)
+    if not changed:
+        raise ValueError("Lối mở ChatGPT có lệnh riêng. UViet giữ nguyên lối mở đó.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    GLib.file_set_contents(str(destination), entry.encode("utf-8"))
 
 
 def get_version():
@@ -29,7 +50,8 @@ class SettingsWindow(Gtk.ApplicationWindow):
         super().__init__(application=application, title="Cài đặt UViet")
         self.set_default_size(460, 360)
         self.picking = False
-        self.dragging = False
+        self.dragging = None
+        self.pending_mode = None
         self.focus_signals = []
         self.focus_timeout = 0
         self.bus = application.get_dbus_connection()
@@ -41,61 +63,99 @@ class SettingsWindow(Gtk.ApplicationWindow):
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=18)
         self.add(content)
-        title = Gtk.Label(label="Ứng dụng tắt Telex", xalign=0)
-        title.get_style_context().add_class("title")
-        content.pack_start(title, False, False, 0)
+        info = Gtk.Label(label="Ứng dụng ngoài hai danh sách dùng chế độ tương thích.", xalign=0, wrap=True)
+        content.pack_start(info, False, False, 0)
 
-        self.picker = Gtk.Button()
-        picker_content = Gtk.Box(spacing=8, margin=6)
-        picker_content.pack_start(Gtk.Image.new_from_icon_name(
-            "color-select-symbolic", Gtk.IconSize.BUTTON), False, False, 0)
-        picker_content.pack_start(Gtk.Label(label="Kéo để chọn cửa sổ"), False, False, 0)
-        self.picker.add(picker_content)
-        self.picker.set_halign(Gtk.Align.START)
-        self.picker.connect("clicked", self.start_pick)
-        self.drag = Gtk.GestureDrag.new(self.picker)
-        self.drag.connect("drag-update", self.on_drag_update)
-        self.drag.connect("drag-end", self.on_drag_end)
-        content.pack_start(self.picker, False, False, 0)
+        self.lists = {}
+        self.gestures = []
+        notebook = Gtk.Notebook()
+        for mode, description in (
+            (MODE_DIRECT, "Gõ trong dòng ở ứng dụng hỗ trợ sửa chữ quanh con trỏ."),
+            (MODE_OFF, "Chuyển nguyên phím cho ứng dụng, không xử lý dấu Telex."),
+        ):
+            notebook.append_page(self.mode_page(mode, description), Gtk.Label(label=MODE_LABELS[mode]))
+        content.pack_start(notebook, True, True, 0)
 
         self.status = Gtk.Label(xalign=0, wrap=True)
         content.pack_start(self.status, False, False, 0)
 
-        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        placeholder = Gtk.Label(label="Chưa có ứng dụng nào được loại trừ", margin=18)
-        placeholder.show()
-        self.list.set_placeholder(placeholder)
-        scroll = Gtk.ScrolledWindow(shadow_type=Gtk.ShadowType.IN)
-        scroll.add(self.list)
-        content.pack_start(scroll, True, True, 0)
+        if GLib.getenv("WAYLAND_DISPLAY") and CHATGPT_SYSTEM_ENTRY.is_file():
+            chatgpt = Gtk.Button(label="Dùng Wayland cho ChatGPT")
+            chatgpt.set_halign(Gtk.Align.START)
+            chatgpt.connect("clicked", self.enable_chatgpt_wayland)
+            content.pack_start(chatgpt, False, False, 0)
 
         self.render_list()
-        self.status.set_text("Kéo biểu tượng lên cửa sổ cần chọn hoặc bấm rồi chọn cửa sổ.")
         self.show_all()
 
+    def enable_chatgpt_wayland(self, _button):
+        destination = Path(GLib.get_user_data_dir()) / "applications" / CHATGPT_DESKTOP_ID
+        source = destination if destination.exists() else CHATGPT_SYSTEM_ENTRY
+        try:
+            configure_chatgpt_wayland(source, destination)
+        except ValueError as error:
+            self.status.set_text(str(error))
+        except (OSError, GLib.Error):
+            self.status.set_text("Không cập nhật được lối mở ChatGPT.")
+        else:
+            self.status.set_text("Hãy thoát hẳn ChatGPT rồi mở lại từ menu ứng dụng.")
+
+    def mode_page(self, mode, description):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=12)
+        page.pack_start(Gtk.Label(label=description, xalign=0, wrap=True), False, False, 0)
+
+        picker = Gtk.Button(label="Chọn cửa sổ")
+        picker.set_image(Gtk.Image.new_from_icon_name("color-select-symbolic", Gtk.IconSize.BUTTON))
+        picker.set_always_show_image(True)
+        picker.set_halign(Gtk.Align.START)
+        picker.connect("clicked", self.on_picker_clicked, mode)
+        drag = Gtk.GestureDrag.new(picker)
+        drag.connect("drag-update", self.on_drag_update, mode)
+        drag.connect("drag-end", self.on_drag_end, mode)
+        self.gestures.append(drag)
+        page.pack_start(picker, False, False, 0)
+
+        applications = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        placeholder = Gtk.Label(label="Chưa có ứng dụng", margin=18)
+        placeholder.show()
+        applications.set_placeholder(placeholder)
+        scroll = Gtk.ScrolledWindow(shadow_type=Gtk.ShadowType.IN)
+        scroll.add(applications)
+        page.pack_start(scroll, True, True, 0)
+        self.lists[mode] = applications
+        return page
+
     def render_list(self):
-        for child in self.list.get_children():
-            child.destroy()
-        for application in sorted(load_excluded()):
-            row = Gtk.Box(spacing=12, margin=8)
+        for applications in self.lists.values():
+            for child in applications.get_children():
+                child.destroy()
+        for application, mode in sorted(load_application_modes().items()):
+            if mode not in self.lists:
+                continue
+            row = Gtk.Box(spacing=8, margin=8)
             row.pack_start(Gtk.Label(label=application, xalign=0), True, True, 0)
-            remove = Gtk.Button(label="Bật lại Telex")
-            remove.connect("clicked", self.enable_application, application)
+            remove = Gtk.Button(label="Bỏ khỏi danh sách")
+            remove.connect("clicked", self.reset_application, application)
             row.pack_end(remove, False, False, 0)
-            self.list.add(row)
-        self.list.show_all()
+            self.lists[mode].add(row)
+        for applications in self.lists.values():
+            applications.show_all()
 
-    def on_drag_update(self, gesture, x, y):
-        if not self.picking and not self.dragging and x * x + y * y >= 64:
-            self.dragging = True
+    def on_picker_clicked(self, _button, mode):
+        self.start_pick(mode)
+
+    def on_drag_update(self, gesture, x, y, mode):
+        if not self.picking and self.dragging is None and x * x + y * y >= 64:
+            self.dragging = mode
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-            self.status.set_text("Thả chuột lên cửa sổ cần chọn.")
+            self.status.set_text(f"{MODE_LABELS[mode]}: thả chuột lên cửa sổ cần chọn.")
 
-    def on_drag_end(self, _gesture, _x, _y):
-        if not self.dragging:
+    def on_drag_end(self, _gesture, _x, _y, mode):
+        if self.dragging != mode:
             return
-        self.dragging = False
+        self.dragging = None
         self.picking = True
+        self.pending_mode = mode
         self.bus.call(
             SHELL_NAME, PICKER_PATH, PICKER_INTERFACE, "PickAtPointer", None,
             GLib.VariantType.new("(s)"), Gio.DBusCallFlags.NO_AUTO_START, 1_000,
@@ -107,15 +167,16 @@ class SettingsWindow(Gtk.ApplicationWindow):
         try:
             (application,) = connection.call_finish(result).unpack()
         except GLib.Error:
-            self.start_pick()
+            self.start_pick(self.pending_mode)
         else:
             self.select_application(application)
 
-    def start_pick(self, *_args):
+    def start_pick(self, mode):
         if self.picking or self.dragging:
             return
         self.picking = True
-        self.status.set_text("Bấm vào cửa sổ cần chọn. Nhấn Esc để hủy.")
+        self.pending_mode = mode
+        self.status.set_text(f"{MODE_LABELS[mode]}: bấm vào cửa sổ cần chọn. Nhấn Esc để hủy.")
         for interface, path in ((PICKER_INTERFACE, PICKER_PATH), (FOCUS_INTERFACE, FOCUS_PATH)):
             self.focus_signals.append(self.bus.signal_subscribe(
                 SHELL_NAME, interface, "FocusChanged", path, None,
@@ -163,19 +224,18 @@ class SettingsWindow(Gtk.ApplicationWindow):
         if not application or application in SETTINGS_WINDOW_CLASSES:
             self.status.set_text("Chưa chọn ứng dụng. Hãy thử lại trên cửa sổ khác.")
             return
-        self.change_application(application, True)
+        self.change_application(application, self.pending_mode)
 
-    def enable_application(self, _button, application):
-        self.change_application(application, False)
+    def reset_application(self, _button, application):
+        self.change_application(application, None)
 
-    def change_application(self, application, exclude):
+    def change_application(self, application, mode):
         try:
-            set_application_excluded(application, exclude)
+            set_application_mode(application, mode)
         except OSError:
-            self.status.set_text("Không lưu được danh sách ứng dụng.")
-            return
-        action = "Đã tắt" if exclude else "Đã bật"
-        self.status.set_text(f"{action} Telex cho {application}.")
+            self.status.set_text("Không lưu được chế độ gõ.")
+        else:
+            self.status.set_text(f"{application} • {MODE_LABELS[mode or MODE_PREEDIT]}")
         self.render_list()
 
 

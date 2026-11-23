@@ -4,7 +4,7 @@ import json
 
 from gi.repository import Gio, GLib
 
-from exclusions import CONFIG_PATH, load_excluded, set_application_excluded
+from exclusions import CONFIG_PATH, MODE_PREEDIT, load_application_modes, set_application_mode
 
 SHELL_NAME = "org.gnome.Shell"
 FOCUS_INTERFACE = "org.gnome.shell.extensions.FocusedWindow"
@@ -15,7 +15,7 @@ PICKER_PATH = "/org/gnome/Shell/Extensions/UVietPicker"
 
 class ApplicationRules:
     def __init__(self):
-        self.excluded = load_excluded()
+        self.modes = load_application_modes()
         self.monitor = None
         try:
             CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +47,7 @@ class ApplicationRules:
 
     def on_config_changed(self, monitor, file, other_file, event):
         if any(item and item.get_path() == str(CONFIG_PATH) for item in (file, other_file)):
-            self.excluded = load_excluded()
+            self.modes = load_application_modes()
 
     def read_focus(self, response):
         self.current = ""
@@ -90,5 +90,8 @@ class ApplicationRules:
         else:
             self.read_focus(response)
 
-    def set_excluded(self, application, exclude):
-        self.excluded = set_application_excluded(application, exclude)
+    def mode_for(self, application):
+        return self.modes.get(application, MODE_PREEDIT)
+
+    def set_mode(self, application, mode):
+        self.modes = set_application_mode(application, mode)

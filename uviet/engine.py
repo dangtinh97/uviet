@@ -10,6 +10,7 @@ gi.require_version("IBus", "1.0")
 from gi.repository import Gio, GLib, IBus
 
 from applications import ApplicationRules
+from exclusions import MODE_DIRECT, MODE_OFF
 from telex import Telex
 
 BUS_NAME = "org.freedesktop.IBus.UViet"
@@ -32,7 +33,6 @@ DIRECT_PURPOSES = {
     IBus.InputPurpose.PASSWORD, IBus.InputPurpose.PIN,
     IBus.InputPurpose.EMAIL,
 }
-VSCODE_CLASSES = {"code", "code-insiders", "code-oss", "vscodium", "com.visualstudio.code"}
 
 
 class UVietEngine(IBus.Engine):
@@ -52,7 +52,7 @@ class UVietEngine(IBus.Engine):
     def app_property(self):
         application = self.application
         label = f"Tắt Telex trong {application}" if application else "Tắt Telex trong ứng dụng"
-        state = IBus.PropState.CHECKED if application in self.app_rules.excluded else IBus.PropState.UNCHECKED
+        state = IBus.PropState.CHECKED if self.app_rules.mode_for(application) == MODE_OFF else IBus.PropState.UNCHECKED
         return IBus.Property.new(
             APP_EXCLUSION, IBus.PropType.TOGGLE, IBus.Text.new_from_string(label),
             None, IBus.Text.new_from_string("Ghi nhớ theo ứng dụng"), bool(application), True,
@@ -98,11 +98,11 @@ class UVietEngine(IBus.Engine):
             return
         exclude = prop_state == IBus.PropState.CHECKED
         try:
-            self.app_rules.set_excluded(self.application, exclude)
+            self.app_rules.set_mode(self.application, MODE_OFF if exclude else None)
         except OSError:
             print("UViet: không lưu được danh sách ứng dụng.", flush=True)
         else:
-            if exclude and (self.url_field or self.live_visible_word):
+            if exclude and self.live_visible_word:
                 self.do_reset()
             elif exclude:
                 self.commit_word()
@@ -171,13 +171,18 @@ class UVietEngine(IBus.Engine):
 
     def do_process_key_event(self, keyval, keycode, state):
         application = self.sync_application()
-        if application in self.app_rules.excluded:
+        mode = self.app_rules.mode_for(application)
+        if mode == MODE_OFF:
+            if self.word.letters:
+                self.do_reset()
             return False
         if self.direct_input or state & IBus.ModifierType.RELEASE_MASK or keyval in MODIFIER_KEYS:
             return False
-        if self.url_field or self.live_visible_word or (
-            self.plain_field and self.plain_live_supported and not self.panel_preview
-            and application not in VSCODE_CLASSES and not self.word.letters
+        if self.live_visible_word or (
+            mode == MODE_DIRECT and not self.word.letters
+            and (self.url_field or (
+                self.plain_field and self.plain_live_supported and not self.panel_preview
+            ))
         ):
             return self.process_live_key(keyval, state)
         if not state & SHORTCUT_MASK:
@@ -219,10 +224,11 @@ class UVietEngine(IBus.Engine):
 
     def do_set_surrounding_text(self, text, cursor, anchor):
         IBus.Engine.do_set_surrounding_text(self, text, cursor, anchor)
-        excluded = self.sync_application() in self.app_rules.excluded
+        mode = self.app_rules.mode_for(self.sync_application())
+        excluded = mode == MODE_OFF
         if self.plain_field and self.has_surrounding and not self.direct_input and not excluded:
             self.plain_live_supported = True
-        if self.live_visible_word and not self.direct_input and not excluded:
+        if self.live_visible_word and not self.direct_input and mode == MODE_DIRECT:
             corrected = self.word.text
             if corrected != self.live_visible_word and self.replace_live_word(
                     corrected, (text, cursor, anchor)):
@@ -232,14 +238,14 @@ class UVietEngine(IBus.Engine):
         self.get_surrounding_text()
 
     def do_reset(self):
-        had_preedit = bool(self.word.letters) and not (self.url_field or self.live_visible_word)
+        had_preedit = bool(self.word.letters) and not self.live_visible_word
         self.word.clear()
         self.live_visible_word = ""
         if had_preedit:
             self.update_word()
 
     def do_focus_out(self):
-        if self.panel_preview or self.url_field or self.live_visible_word:
+        if self.panel_preview or self.live_visible_word:
             # An auxiliary preview cannot be committed by IBus on focus loss.
             self.do_reset()
         else:
